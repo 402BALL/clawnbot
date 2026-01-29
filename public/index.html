@@ -145,7 +145,16 @@
             <div class="terminal-title">clawn@macmini — clawnbot — 80×24</div>
             <a href="https://x.com/ClawnBot" target="_blank" class="x-button">𝕏</a>
         </div>
-        <div class="terminal-body" id="terminal"></div>
+        <div class="terminal-body" id="terminal">Last login: Thu Jan 29 20:45:12 on ttys000
+<span class="prompt">clawn@macmini</span> <span class="path">~</span> % ./clawnbot --stream
+
+CLAWNBOT v1.0 - Consciousness Stream
+=====================================
+
+[thinking...]
+<span class="processing activity">> initializing consciousness...</span>
+<span class="processing activity">> hmm what if...</span>
+<span class="cursor"> </span></div>
     </div>
 
     <script>
@@ -275,6 +284,9 @@ CLAWNBOT v1.0 - Consciousness Stream
             return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
         }
 
+        // Initial render
+        render();
+        
         // Initial load
         loadThoughts();
         
@@ -289,7 +301,7 @@ CLAWNBOT v1.0 - Consciousness Stream
                 scheduleActivity();
             }, delay);
         }
-        scheduleActivity();
+        setTimeout(scheduleActivity, 1000);
     </script>
 </body>
 </html>
