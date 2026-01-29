@@ -1,22 +1,38 @@
 """
 THOUGHTS API ENDPOINT
-For getting Clawn's thought stream
 """
 
 from http.server import BaseHTTPRequestHandler
 import json
-import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Direct Supabase REST API call (no SDK needed)
+import urllib.request
 
-from lib.memory import ClawnMemory
+def get_thoughts():
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_ANON_KEY")
+    
+    if not url or not key:
+        return []
+    
+    api_url = f"{url}/rest/v1/thoughts?select=*&order=timestamp.asc&limit=100"
+    
+    req = urllib.request.Request(api_url)
+    req.add_header("apikey", key)
+    req.add_header("Authorization", f"Bearer {key}")
+    
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return json.loads(response.read().decode())
+    except Exception as e:
+        print(f"Error: {e}")
+        return []
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
-            memory = ClawnMemory()
-            thoughts = memory.get_thoughts(limit=100)
+            thoughts = get_thoughts()
             
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
@@ -37,4 +53,3 @@ class handler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
-
