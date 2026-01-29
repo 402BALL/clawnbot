@@ -19,12 +19,6 @@
       "src": "/(.*)",
       "dest": "/public/$1"
     }
-  ],
-  "crons": [
-    {
-      "path": "/api/think",
-      "schedule": "*/15 * * * *"
-    }
   ]
 }
 
