@@ -1,6 +1,7 @@
 """
 THINK API ENDPOINT
 Triggers Clawn to generate a new thought
+Supports both GET (for Vercel Cron) and POST
 """
 
 from http.server import BaseHTTPRequestHandler
@@ -14,7 +15,7 @@ from lib.brain import get_brain
 from lib.memory import ClawnMemory
 
 class handler(BaseHTTPRequestHandler):
-    def do_POST(self):
+    def _generate_thought(self):
         try:
             brain = get_brain()
             thought = brain.think()
@@ -36,10 +37,16 @@ class handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
     
+    def do_GET(self):
+        """For Vercel Cron"""
+        self._generate_thought()
+    
+    def do_POST(self):
+        self._generate_thought()
+    
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
-
