@@ -1,4 +1,4 @@
-"""
+image.png"""
 CLAWNBOT SYSTEM PROMPTS
 The sacred texts that define who Clawn is
 """
