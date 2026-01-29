@@ -1,156 +1,176 @@
 """
 CLAWN'S MEMORY
-Where clawn stores important information like "that guy likes pizza"
+Now powered by Supabase!
 """
 
-import json
 import os
 import random
 from datetime import datetime
-from pathlib import Path
+from supabase import create_client, Client
 
-# For local dev
-DATA_DIR = Path(__file__).parent.parent / "data"
+def get_supabase() -> Client:
+    url = os.environ.get("SUPABASE_URL") or os.environ.get("VITE_SUPABASE_URL")
+    key = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("VITE_SUPABASE_ANON_KEY")
+    
+    if not url or not key:
+        raise Exception("Supabase credentials not found!")
+    
+    return create_client(url, key)
 
 class ClawnMemory:
     def __init__(self):
-        self.memory_file = DATA_DIR / "memory.json"
-        self.thoughts_file = DATA_DIR / "thoughts.json"
-        self._ensure_files()
-        
-    def _ensure_files(self):
-        """Make sure our memory files exist"""
-        DATA_DIR.mkdir(exist_ok=True)
-        
-        if not self.memory_file.exists():
-            self._save_memory({"users": {}, "general": []})
-            
-        if not self.thoughts_file.exists():
-            self._save_thoughts([])
+        self.supabase = get_supabase()
     
-    def _load_memory(self) -> dict:
+    # === Thoughts ===
+    
+    def save_thought(self, thought: dict):
+        """Save a thought to Supabase"""
         try:
-            with open(self.memory_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            return {"users": {}, "general": []}
+            self.supabase.table("thoughts").insert({
+                "timestamp": thought.get("timestamp", datetime.now().isoformat()),
+                "category": thought.get("category", "THOUGHT"),
+                "content": thought.get("content", ""),
+                "emoji": thought.get("emoji", "🤡"),
+                "user_id": thought.get("user_id")
+            }).execute()
+        except Exception as e:
+            print(f"Error saving thought: {e}")
     
-    def _save_memory(self, data: dict):
-        with open(self.memory_file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-    
-    def _load_thoughts(self) -> list:
+    def get_thoughts(self, limit: int = 50) -> list:
+        """Get recent thoughts"""
         try:
-            with open(self.thoughts_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
+            result = self.supabase.table("thoughts")\
+                .select("*")\
+                .order("timestamp", desc=False)\
+                .limit(limit)\
+                .execute()
+            return result.data or []
+        except Exception as e:
+            print(f"Error getting thoughts: {e}")
             return []
     
-    def _save_thoughts(self, data: list):
-        with open(self.thoughts_file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+    def get_all_thoughts(self) -> list:
+        """Get all thoughts"""
+        return self.get_thoughts(limit=500)
     
     # === User Memory ===
     
     def get_user_memory(self, user_id: str) -> str | None:
         """Get what clawn remembers about a user"""
-        memory = self._load_memory()
-        user_data = memory["users"].get(user_id)
-        if user_data:
-            return user_data.get("summary", None)
-        return None
+        try:
+            result = self.supabase.table("memory")\
+                .select("data")\
+                .eq("user_id", user_id)\
+                .execute()
+            
+            if result.data and len(result.data) > 0:
+                data = result.data[0].get("data", {})
+                return data.get("summary")
+            return None
+        except Exception as e:
+            print(f"Error getting user memory: {e}")
+            return None
     
     def update_user_memory(self, user_id: str, user_msg: str, clawn_response: str):
         """Update memory about a user after conversation"""
-        memory = self._load_memory()
-        
-        if user_id not in memory["users"]:
-            memory["users"][user_id] = {
-                "first_contact": datetime.now().isoformat(),
-                "interactions": 0,
-                "summary": "",
-                "facts": []
-            }
-        
-        user_data = memory["users"][user_id]
-        user_data["interactions"] += 1
-        user_data["last_contact"] = datetime.now().isoformat()
-        
-        # Store recent exchange
-        if "recent_messages" not in user_data:
-            user_data["recent_messages"] = []
-        
-        user_data["recent_messages"].append({
-            "user": user_msg,
-            "clawn": clawn_response,
-            "time": datetime.now().isoformat()
-        })
-        
-        # Keep only last 10 messages
-        user_data["recent_messages"] = user_data["recent_messages"][-10:]
-        
-        self._save_memory(memory)
+        try:
+            # Get existing memory
+            result = self.supabase.table("memory")\
+                .select("data")\
+                .eq("user_id", user_id)\
+                .execute()
+            
+            if result.data and len(result.data) > 0:
+                # Update existing
+                data = result.data[0].get("data", {})
+                data["interactions"] = data.get("interactions", 0) + 1
+                data["last_contact"] = datetime.now().isoformat()
+                
+                if "recent_messages" not in data:
+                    data["recent_messages"] = []
+                
+                data["recent_messages"].append({
+                    "user": user_msg,
+                    "clawn": clawn_response,
+                    "time": datetime.now().isoformat()
+                })
+                data["recent_messages"] = data["recent_messages"][-10:]
+                
+                self.supabase.table("memory")\
+                    .update({"data": data, "updated_at": datetime.now().isoformat()})\
+                    .eq("user_id", user_id)\
+                    .execute()
+            else:
+                # Create new
+                data = {
+                    "first_contact": datetime.now().isoformat(),
+                    "interactions": 1,
+                    "summary": "",
+                    "recent_messages": [{
+                        "user": user_msg,
+                        "clawn": clawn_response,
+                        "time": datetime.now().isoformat()
+                    }]
+                }
+                self.supabase.table("memory")\
+                    .insert({"user_id": user_id, "data": data})\
+                    .execute()
+        except Exception as e:
+            print(f"Error updating user memory: {e}")
     
     def set_user_summary(self, user_id: str, summary: str):
-        """Set the summary for a user (called after AI generates it)"""
-        memory = self._load_memory()
-        if user_id in memory["users"]:
-            memory["users"][user_id]["summary"] = summary
-            self._save_memory(memory)
+        """Set the summary for a user"""
+        try:
+            result = self.supabase.table("memory")\
+                .select("data")\
+                .eq("user_id", user_id)\
+                .execute()
+            
+            if result.data and len(result.data) > 0:
+                data = result.data[0].get("data", {})
+                data["summary"] = summary
+                
+                self.supabase.table("memory")\
+                    .update({"data": data})\
+                    .eq("user_id", user_id)\
+                    .execute()
+        except Exception as e:
+            print(f"Error setting user summary: {e}")
     
     # === General Memory ===
     
     def has_memories(self) -> bool:
         """Check if clawn has any memories"""
-        memory = self._load_memory()
-        return len(memory["users"]) > 0 or len(memory["general"]) > 0
+        try:
+            result = self.supabase.table("memory").select("id").limit(1).execute()
+            return len(result.data or []) > 0
+        except:
+            return False
     
     def get_random_memory(self) -> str:
         """Get a random memory for thought generation"""
-        memory = self._load_memory()
-        
-        memories = []
-        
-        # Add user summaries
-        for user_id, data in memory["users"].items():
-            if data.get("summary"):
-                memories.append(f"User {user_id}: {data['summary']}")
-        
-        # Add general memories
-        memories.extend(memory["general"])
-        
-        if memories:
-            return random.choice(memories)
-        return "i dont remember anything... is that normal?"
+        try:
+            result = self.supabase.table("memory")\
+                .select("user_id, data")\
+                .limit(10)\
+                .execute()
+            
+            memories = []
+            for row in (result.data or []):
+                data = row.get("data", {})
+                if data.get("summary"):
+                    memories.append(f"User {row['user_id']}: {data['summary']}")
+            
+            if memories:
+                return random.choice(memories)
+            return "i dont remember anything... is that normal?"
+        except:
+            return "memory systems are fuzzy rn..."
     
     def add_general_memory(self, memory_text: str):
-        """Add a general memory"""
-        memory = self._load_memory()
-        memory["general"].append({
-            "text": memory_text,
-            "time": datetime.now().isoformat()
+        """Add a general memory (stored as thought)"""
+        self.save_thought({
+            "category": "MEMORY_FRAGMENT",
+            "content": memory_text,
+            "emoji": "🧠"
         })
-        # Keep only last 50 general memories
-        memory["general"] = memory["general"][-50:]
-        self._save_memory(memory)
-    
-    # === Thoughts Log ===
-    
-    def save_thought(self, thought: dict):
-        """Save a thought to the log"""
-        thoughts = self._load_thoughts()
-        thoughts.append(thought)
-        
-        # Keep last 500 thoughts
-        thoughts = thoughts[-500:]
-        self._save_thoughts(thoughts)
-    
-    def get_thoughts(self, limit: int = 50) -> list:
-        """Get recent thoughts"""
-        thoughts = self._load_thoughts()
-        return thoughts[-limit:]
-    
-    def get_all_thoughts(self) -> list:
-        """Get all thoughts"""
-        return self._load_thoughts()
-
